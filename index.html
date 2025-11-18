@@ -21,6 +21,7 @@
       --shadow-soft: 0 10px 25px rgba(0, 0, 0, 0.06);
       --radius-lg: 18px;
       --radius-pill: 999px;
+      --pop-red: #c53a3a;
     }
 
     * {
@@ -252,11 +253,26 @@
     /* ------------------------------
        PREVIEW & COPY
     ------------------------------ */
+    .format-row {
+      margin: 6px 0 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    @media (min-width: 640px) {
+      .format-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
     .preview-body {
       font-size: 0.95rem;
       line-height: 1.55;
       color: var(--text-main);
-      white-space: pre-line;
       padding: 8px 0 4px;
       min-height: 110px;
     }
@@ -264,6 +280,33 @@
     .preview-placeholder {
       color: var(--text-soft);
       font-style: italic;
+    }
+
+    .rubric-text {
+      display: block;
+    }
+
+    .rubric-line {
+      margin-bottom: 2px;
+    }
+
+    .rubric-line.roomy {
+      margin-bottom: 8px;
+    }
+
+    .rubric-level-num {
+      color: var(--pop-red);
+      font-weight: 700;
+    }
+
+    .rubric-list {
+      margin: 0;
+      padding-left: 1.1rem;
+      list-style-type: disc;
+    }
+
+    .rubric-list li {
+      margin-bottom: 4px;
     }
 
     .copy-row {
@@ -325,6 +368,7 @@
       text-align: center;
       font-size: 0.8rem;
       color: var(--text-soft);
+      line-height: 1.4;
     }
 
     footer span.heart {
@@ -446,6 +490,16 @@
         <p>Use as-is or tweak the wording to match your style.</p>
       </div>
 
+      <!-- NEW FORMAT TOGGLE ROW -->
+      <div class="format-row">
+        <div class="setting-block-title">Format</div>
+        <div class="pill-group" id="format-group">
+          <button class="pill-btn pill-active" data-format="bold">Bold ✦</button>
+          <button class="pill-btn" data-format="roomy">Roomy ✦✦</button>
+          <button class="pill-btn" data-format="dots">Dots •</button>
+        </div>
+      </div>
+
       <div class="preview-body">
         <span class="preview-placeholder">
           Choose a category above to see the rubric text.
@@ -468,7 +522,7 @@
     </div>
 
     <footer>
-      Built for real teachers who already do enough. <span class="heart">♥</span>
+      Built by Maschino Labs for teachers who already do enough. <span class="heart">♥</span>
     </footer>
   </div>
 
@@ -600,7 +654,7 @@
 
         formal_short: `4 – Demonstrates outstanding creative expression.
 3 – Demonstrates consistent creativity with thoughtful elements.
-2 – Demonstrates limited creativity.
+2 – Demonstronstrates limited creativity.
 1 – Demonstrates minimal creativity or originality.`,
 
         formal_long: `4 – Demonstrates outstanding creative expression with imaginative, original ideas.
@@ -660,10 +714,12 @@
     let currentCategory = null;
     let currentTone = "simple";
     let currentLength = "short";
+    let currentFormat = "bold"; // bold | roomy | dots
 
     const categoryButtons = document.querySelectorAll(".category-btn");
     const toneButtons = document.querySelectorAll("[data-tone]");
     const lengthButtons = document.querySelectorAll("[data-length]");
+    const formatButtons = document.querySelectorAll("[data-format]");
     const previewPlaceholder = document.querySelector(".preview-placeholder");
     const previewText = document.querySelector(".rubric-text");
     const copyBtn = document.querySelector(".copy-btn");
@@ -704,15 +760,46 @@
       if (!currentCategory) {
         previewPlaceholder.style.display = "inline";
         previewText.style.display = "none";
+        previewText.innerHTML = "";
         return;
       }
 
       const key = `${currentTone}_${currentLength}`;
-      const text = rubrics[currentCategory][key];
+      const raw = (rubrics[currentCategory][key] || "").trim();
+      const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+
+      let html = "";
+
+      if (currentFormat === "dots") {
+        html = '<ul class="rubric-list">' +
+          lines.map(line => {
+            const match = line.match(/^(\d+)\s*[–-]\s*(.*)$/);
+            if (match) {
+              const num = match[1];
+              const rest = match[2];
+              return `<li><span class="rubric-level-num">${num}:</span> ${rest}</li>`;
+            } else {
+              return `<li>${line}</li>`;
+            }
+          }).join("") +
+          "</ul>";
+      } else {
+        const roomy = currentFormat === "roomy";
+        html = lines.map(line => {
+          const match = line.match(/^(\d+)\s*[–-]\s*(.*)$/);
+          if (match) {
+            const num = match[1];
+            const rest = match[2];
+            return `<div class="rubric-line${roomy ? " roomy" : ""}"><span class="rubric-level-num">${num} –</span> ${rest}</div>`;
+          } else {
+            return `<div class="rubric-line${roomy ? " roomy" : ""}">${line}</div>`;
+          }
+        }).join("");
+      }
 
       previewPlaceholder.style.display = "none";
-      previewText.style.display = "inline";
-      previewText.textContent = text.trim();
+      previewText.style.display = "block";
+      previewText.innerHTML = html;
       updateMicroMessage();
     }
 
@@ -754,13 +841,25 @@
     });
 
     /* ---------------------------------------------
+       FORMAT CONTROLS
+    --------------------------------------------- */
+    formatButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        currentFormat = btn.dataset.format;
+        formatButtons.forEach((b) => b.classList.remove("pill-active"));
+        btn.classList.add("pill-active");
+        updatePreview();
+      });
+    });
+
+    /* ---------------------------------------------
        COPY BUTTON
     --------------------------------------------- */
     copyBtn.addEventListener("click", () => {
-      const textToCopy = previewText.style.display === "inline"
-        ? previewText.textContent.trim()
-        : "";
+      const hasRubric = previewPlaceholder.style.display === "none";
+      if (!hasRubric) return;
 
+      const textToCopy = previewText.textContent.trim();
       if (!textToCopy) return;
 
       navigator.clipboard.writeText(textToCopy).then(() => {
